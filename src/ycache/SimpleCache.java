@@ -1,14 +1,65 @@
 package ycache;
 
+import ycache.eviction.EvictionStrategy;
+import ycache.eviction.LRUEviction;
+
+import java.util.Collection;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Basic in-memory heap-based cache implementation.
  * It is non-persistant, thread-safe.
+ *
  * @author Roman Voropaev
  * @version 1.0
  */
 public class SimpleCache<K,V> implements Cache<K,V>{
+
+    // Map contains cache data.
+    private final Map<K,V> map;
+
+    // Cleaner to free space by eviction
+    private final EvictionStrategy<K> cleaner;
+    // How many elements will be evicted at once on put
+    private static final int CLEAN_STRIDE = 5;
+
+    // Current cache size
+    private long size = 0;
+    // Number of puts to cache
+    private long puts = 0;
+    // Number of gets from cache
+    private long gets = 0;
+    // Cache misses
+    private long misses = 0;
+    // Cache hits
+    private long hits;
+
+    // Max size of cache. Cache can't be larger.
+    private long maxSize;
+
+    /**
+     * Constructor that supports specifying eviction strategy.
+     *
+     * @param maxSize Max size of cache
+     * @param eviction Eviction strategy
+     */
+    public SimpleCache(int maxSize, EvictionStrategy<K> eviction) {
+        this.map = new ConcurrentHashMap<K, V>(maxSize);
+        this.cleaner = eviction;
+        this.maxSize = maxSize;
+    }
+
+    /**
+     * Default constructor. Uses LRU algorithm by default.
+     *
+     * @param maxSize Size of cache
+     */
+    public SimpleCache(int maxSize) {
+        this(maxSize, new LRUEviction<K>(maxSize));
+    }
+
     /**
      * Puts element to cache.
      *
@@ -17,7 +68,14 @@ public class SimpleCache<K,V> implements Cache<K,V>{
      */
     @Override
     public void put(K key, V value) {
-        //To change body of implemented methods use File | Settings | File Templates.
+        cleaner.notifyPut(key);
+        puts++;
+        size++;
+        if (size >= maxSize) {
+            // Should be cleaned
+            free(CLEAN_STRIDE);
+        }
+        map.put(key, value);
     }
 
     /**
@@ -28,7 +86,10 @@ public class SimpleCache<K,V> implements Cache<K,V>{
      */
     @Override
     public V get(K key) {
-        return null;  //To change body of implemented methods use File | Settings | File Templates.
+        cleaner.notifyGet(key);
+        gets++;
+        if (!map.containsKey(key)) misses++; else hits++;
+        return map.get(key);
     }
 
     /**
@@ -38,7 +99,9 @@ public class SimpleCache<K,V> implements Cache<K,V>{
      */
     @Override
     public void remove(K key) {
-        //To change body of implemented methods use File | Settings | File Templates.
+        cleaner.notifyRemove(key);
+        map.remove(key);
+        size--;
     }
 
     /**
@@ -46,7 +109,9 @@ public class SimpleCache<K,V> implements Cache<K,V>{
      */
     @Override
     public void close() {
-        //To change body of implemented methods use File | Settings | File Templates.
+        cleaner.notifyClose();
+        map.clear();
+        size = 0;
     }
 
     /**
@@ -56,7 +121,7 @@ public class SimpleCache<K,V> implements Cache<K,V>{
      */
     @Override
     public long size() {
-        return 0;  //To change body of implemented methods use File | Settings | File Templates.
+        return size;
     }
 
     /**
@@ -65,18 +130,18 @@ public class SimpleCache<K,V> implements Cache<K,V>{
      * @return Keys as a set
      */
     @Override
-    public Set keys() {
-        return null;  //To change body of implemented methods use File | Settings | File Templates.
+    public Set<K> keys() {
+        return map.keySet();
     }
 
     /**
      * Get set of values from this cache.
      *
-     * @return Values as a set
+     * @return Values collection
      */
     @Override
-    public Set values() {
-        return null;  //To change body of implemented methods use File | Settings | File Templates.
+    public Collection<V> values() {
+        return map.values();
     }
 
     /**
@@ -85,8 +150,10 @@ public class SimpleCache<K,V> implements Cache<K,V>{
      * @param count Number of elements
      */
     @Override
-    public void free(long count) {
-        //To change body of implemented methods use File | Settings | File Templates.
+    public void free(int count) {
+        for (K key : cleaner.nextVictims(count)) {
+            map.remove(key);
+        }
     }
 
     /**
@@ -97,7 +164,7 @@ public class SimpleCache<K,V> implements Cache<K,V>{
      */
     @Override
     public V getQuiet(K key) {
-        return null;  //To change body of implemented methods use File | Settings | File Templates.
+        return map.get(key);
     }
 
     /**
@@ -108,7 +175,7 @@ public class SimpleCache<K,V> implements Cache<K,V>{
      */
     @Override
     public boolean contains(K key) {
-        return false;  //To change body of implemented methods use File | Settings | File Templates.
+        return map.containsKey(key);
     }
 
     /**
@@ -120,6 +187,13 @@ public class SimpleCache<K,V> implements Cache<K,V>{
      */
     @Override
     public boolean putIfAbsent(K key, V value) {
-        return false;  //To change body of implemented methods use File | Settings | File Templates.
+        synchronized (map) {
+            if (map.containsKey(key)) return false;
+            map.put(key, value);
+        }
+        cleaner.notifyPut(key);
+        puts++;
+        size++;
+        return true;
     }
 }

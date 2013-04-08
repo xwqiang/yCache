@@ -1,5 +1,6 @@
 package ycache;
 
+import java.util.Collection;
 import java.util.Set;
 
 /**
@@ -46,19 +47,19 @@ public interface Cache<K, V> {
      * Get set of keys from this cache.
      * @return Keys as a set
      */
-    Set keys();
+    Set<K> keys();
 
     /**
      * Get set of values from this cache.
      * @return Values as a set
      */
-    Set values();
+    Collection<V> values();
 
     /**
      * Free space by evicting {@code count} elements.
      * @param count Number of elements
      */
-    void free(long count);
+    void free(int count);
 
     /**
      * Get element without touching cache access stats.
