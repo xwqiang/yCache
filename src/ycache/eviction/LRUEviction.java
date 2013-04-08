@@ -2,7 +2,7 @@ package ycache.eviction;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * LRU algorithm for cache elements eviction.
@@ -11,17 +11,14 @@ import java.util.concurrent.PriorityBlockingQueue;
  */
 public class LRUEviction<K> implements EvictionStrategy<K> {
 
-    private Queue<LRUEntry> queue;
-    private Map<K,LRUEntry> lookup;
+    private Map<K,AtomicLong> lookup;
 
     public LRUEviction(int cacheSize) {
-        this.queue = new PriorityBlockingQueue<LRUEntry>(cacheSize);
-        this.lookup = new ConcurrentHashMap<K, LRUEntry>(cacheSize);
+        this.lookup = new ConcurrentHashMap<K, AtomicLong>(cacheSize);
     }
 
     public LRUEviction() {
-        this.queue = new PriorityBlockingQueue<LRUEntry>();
-        this.lookup = new ConcurrentHashMap<K, LRUEntry>();
+        this.lookup = new ConcurrentHashMap<K, AtomicLong>();
     }
 
     /**
@@ -29,7 +26,6 @@ public class LRUEviction<K> implements EvictionStrategy<K> {
      */
     @Override
     public void notifyClose() {
-        queue.clear();
         lookup.clear();
     }
 
@@ -40,10 +36,7 @@ public class LRUEviction<K> implements EvictionStrategy<K> {
      */
     @Override
     public void notifyPut(K key) {
-        long now = System.currentTimeMillis();
-        LRUEntry entry = new LRUEntry(key, now);
-        queue.offer(entry);
-        lookup.put(key, entry);
+        lookup.put(key, new AtomicLong(System.currentTimeMillis()));
     }
 
     /**
@@ -53,14 +46,9 @@ public class LRUEviction<K> implements EvictionStrategy<K> {
      */
     @Override
     public void notifyGet(K key) {
-        // Block. queue update = remove & insert again
-        LRUEntry entry = lookup.get(key);
-        assert entry != null;
-        boolean removed = queue.remove(entry);
-        assert removed;
-        entry.timestamp = System.currentTimeMillis();
-        boolean added = queue.add(entry);
-        assert added;
+        AtomicLong touches = lookup.get(key);
+        assert touches != null;
+        touches.set(System.currentTimeMillis());
     }
 
     /**
@@ -70,8 +58,7 @@ public class LRUEviction<K> implements EvictionStrategy<K> {
      */
     @Override
     public void notifyRemove(K key) {
-        boolean removed = queue.remove(lookup.remove(key));
-        assert removed;
+        lookup.remove(key);
     }
 
     /**
@@ -81,29 +68,23 @@ public class LRUEviction<K> implements EvictionStrategy<K> {
      */
     @Override
     public Collection<K> nextVictims(int count) {
-        if (count > queue.size()) throw new IllegalStateException(count+" elements can't be evicted");
+        if (count > lookup.size()) throw new IllegalStateException(count+" elements can't be evicted");
         List<K> res = new ArrayList<K>(count);
+        Map.Entry<K,AtomicLong>[] entries = (Map.Entry<K,AtomicLong>[]) lookup.entrySet().toArray();
+        Arrays.sort(entries, new Comparator<Map.Entry<K, AtomicLong>>() {
+            @Override
+            public int compare(Map.Entry<K, AtomicLong> o1, Map.Entry<K, AtomicLong> o2) {
+                long v1 = o1.getValue().get();
+                long v2 = o2.getValue().get();
+                return v1<v2? -1 : v1>v2? 1 : 0;
+            }
+        });
+
         for (int i = 0; i < count; i++) {
-            res.add(queue.poll().key);
+            res.add(entries[i].getKey());
         }
         return res;
-    }
 
-    private class LRUEntry implements Comparable<LRUEntry> {
-        long timestamp;
-        K key;
-
-        public LRUEntry(K key, long timestamp) {
-            this.timestamp = timestamp;
-            this.key = key;
-        }
-
-        @Override
-        public int compareTo(LRUEntry o) {
-            if (timestamp < o.timestamp) return -1;
-            if (timestamp > o.timestamp) return 1;
-            return 0;
-        }
     }
 
 }

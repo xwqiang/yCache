@@ -1,6 +1,8 @@
 package ycache.eviction;
 
-import java.util.Collection;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * LFU algorithm for cache elements eviction.
@@ -9,13 +11,22 @@ import java.util.Collection;
  */
 public class LFUEviction<K> implements EvictionStrategy<K> {
 
-    private
+    private Map<K,AtomicLong> lookup;
+
+    public LFUEviction(int cacheSize) {
+        this.lookup = new ConcurrentHashMap<K, AtomicLong>(cacheSize);
+    }
+
+    public LFUEviction() {
+        this.lookup = new ConcurrentHashMap<K, AtomicLong>();
+    }
+
     /**
      * Called by cache to notify about closing.
      */
     @Override
     public void notifyClose() {
-        //To change body of implemented methods use File | Settings | File Templates.
+        lookup.clear();
     }
 
     /**
@@ -25,7 +36,7 @@ public class LFUEviction<K> implements EvictionStrategy<K> {
      */
     @Override
     public void notifyPut(K key) {
-        //To change body of implemented methods use File | Settings | File Templates.
+        lookup.put(key, new AtomicLong(0));
     }
 
     /**
@@ -35,7 +46,9 @@ public class LFUEviction<K> implements EvictionStrategy<K> {
      */
     @Override
     public void notifyGet(K key) {
-        //To change body of implemented methods use File | Settings | File Templates.
+        AtomicLong touches = lookup.get(key);
+        assert touches != null;
+        touches.incrementAndGet();
     }
 
     /**
@@ -45,7 +58,7 @@ public class LFUEviction<K> implements EvictionStrategy<K> {
      */
     @Override
     public void notifyRemove(K key) {
-        //To change body of implemented methods use File | Settings | File Templates.
+        lookup.remove(key);
     }
 
     /**
@@ -55,6 +68,22 @@ public class LFUEviction<K> implements EvictionStrategy<K> {
      */
     @Override
     public Collection<K> nextVictims(int count) {
-        return null;  //To change body of implemented methods use File | Settings | File Templates.
+        if (count > lookup.size()) throw new IllegalStateException(count+" elements can't be evicted");
+        List<K> res = new ArrayList<K>(count);
+        Map.Entry<K,AtomicLong>[] entries = (Map.Entry<K,AtomicLong>[]) lookup.entrySet().toArray();
+        Arrays.sort(entries, new Comparator<Map.Entry<K, AtomicLong>>() {
+            @Override
+            public int compare(Map.Entry<K, AtomicLong> o1, Map.Entry<K, AtomicLong> o2) {
+                long v1 = o1.getValue().get();
+                long v2 = o2.getValue().get();
+                return v1<v2? -1 : v1>v2? 1 : 0;
+            }
+        });
+
+        for (int i = 0; i < count; i++) {
+            res.add(entries[i].getKey());
+        }
+        return res;
+
     }
 }
