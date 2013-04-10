@@ -1,5 +1,6 @@
 package ycache;
 
+import org.apache.log4j.Logger;
 import ycache.eviction.EvictionStrategy;
 import ycache.eviction.LRUEviction;
 
@@ -16,6 +17,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * @version 1.0
  */
 public class SimpleCache<K,V> implements Cache<K,V>{
+
+    // Logging
+    private final Logger LOG = Logger.getLogger(SimpleCache.class);
 
     // Map contains cache data.
     private final Map<K,V> map;
@@ -49,6 +53,7 @@ public class SimpleCache<K,V> implements Cache<K,V>{
         this.map = new ConcurrentHashMap<K, V>(maxSize);
         this.cleaner = eviction;
         this.maxSize = maxSize;
+        LOG.info("Cache object created, maxSize=" + maxSize);
     }
 
     /**
@@ -73,9 +78,10 @@ public class SimpleCache<K,V> implements Cache<K,V>{
         size++;
         if (size >= maxSize) {
             // Should be cleaned
-            free(CLEAN_STRIDE);
+            free((int)(CLEAN_STRIDE < size? CLEAN_STRIDE : size));
         }
         map.put(key, value);
+        LOG.debug("Element (" + key + ":" + value + ") was inserted to cache");
     }
 
     /**
@@ -89,7 +95,9 @@ public class SimpleCache<K,V> implements Cache<K,V>{
         cleaner.notifyGet(key);
         gets++;
         if (!map.containsKey(key)) misses++; else hits++;
-        return map.get(key);
+        V value = map.get(key);
+        LOG.debug("Element (" + key + ":" + value + ") was accessed in cache");
+        return value;
     }
 
     /**
@@ -100,8 +108,9 @@ public class SimpleCache<K,V> implements Cache<K,V>{
     @Override
     public void remove(K key) {
         cleaner.notifyRemove(key);
-        map.remove(key);
+        V value = map.remove(key);
         size--;
+        LOG.debug("Element (" + key + ":" + value + ") was removed from cache");
     }
 
     /**
@@ -112,6 +121,7 @@ public class SimpleCache<K,V> implements Cache<K,V>{
         cleaner.notifyClose();
         map.clear();
         size = 0;
+        LOG.debug("Cache was closed");
     }
 
     /**
@@ -151,8 +161,11 @@ public class SimpleCache<K,V> implements Cache<K,V>{
      */
     @Override
     public void free(int count) {
-        for (K key : cleaner.nextVictims(count)) {
+        Collection<K> victims = cleaner.nextVictims(count);
+        LOG.debug("Elements " + victims + " will be killed");
+        for (K key : victims) {
             map.remove(key);
+            cleaner.notifyRemove(key);
         }
     }
 
@@ -194,6 +207,23 @@ public class SimpleCache<K,V> implements Cache<K,V>{
         cleaner.notifyPut(key);
         puts++;
         size++;
+        LOG.debug("Element (" + key + ":" + value + ") was inserted to cache");
         return true;
+    }
+
+    public long getPuts() {
+        return puts;
+    }
+
+    public long getGets() {
+        return gets;
+    }
+
+    public long getMisses() {
+        return misses;
+    }
+
+    public long getHits() {
+        return hits;
     }
 }
