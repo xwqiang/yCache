@@ -8,6 +8,7 @@ import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  * Basic in-memory heap-based cache implementation.
@@ -22,7 +23,7 @@ public class SimpleCache<K,V> implements Cache<K,V>{
     private final Logger LOG = Logger.getLogger(SimpleCache.class);
 
     // Map contains cache data.
-    private final Map<K,V> map;
+    private final ConcurrentMap<K,V> map;
 
     // Cleaner to free space by eviction
     private final EvictionStrategy<K> cleaner;
@@ -207,10 +208,7 @@ public class SimpleCache<K,V> implements Cache<K,V>{
      */
     @Override
     public boolean putIfAbsent(K key, V value) {
-        synchronized (map) {
-            if (map.containsKey(key)) return false;
-            map.put(key, value);
-        }
+        if (map.putIfAbsent(key,value) != null) return false;
         cleaner.notifyPut(key);
         puts++;
         size++;
