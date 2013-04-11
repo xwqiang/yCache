@@ -23,7 +23,7 @@ public class FIFOEviction<K> implements EvictionStrategy<K> {
      * Called by cache to notify about closing.
      */
     @Override
-    public void notifyClose() {
+    public void notifyClear() {
         queue.clear();
     }
 

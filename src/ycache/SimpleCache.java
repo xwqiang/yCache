@@ -27,7 +27,7 @@ public class SimpleCache<K,V> implements Cache<K,V>{
     // Cleaner to free space by eviction
     private final EvictionStrategy<K> cleaner;
     // How many elements will be evicted at once on put
-    private static final int CLEAN_STRIDE = 5;
+    private static final int CLEAN_STRIDE = 10;
 
     // Current cache size
     private long size = 0;
@@ -53,7 +53,8 @@ public class SimpleCache<K,V> implements Cache<K,V>{
         this.map = new ConcurrentHashMap<K, V>(maxSize);
         this.cleaner = eviction;
         this.maxSize = maxSize;
-        LOG.info("Cache object created, maxSize=" + maxSize);
+        LOG.info(String.format("Cache object created (maxSize=%d,stratagy=%s)",
+                maxSize, eviction.getClass().getName() ));
     }
 
     /**
@@ -81,7 +82,8 @@ public class SimpleCache<K,V> implements Cache<K,V>{
             free((int)(CLEAN_STRIDE < size? CLEAN_STRIDE : size));
         }
         map.put(key, value);
-        LOG.debug("Element (" + key + ":" + value + ") was inserted to cache");
+        if (key!=null && value != null)
+            LOG.debug(String.format("Element (%s:%s) was inserted to cache", key.toString(), value.toString()));
     }
 
     /**
@@ -92,11 +94,16 @@ public class SimpleCache<K,V> implements Cache<K,V>{
      */
     @Override
     public V get(K key) {
-        cleaner.notifyGet(key);
         gets++;
-        if (!map.containsKey(key)) misses++; else hits++;
+        if (!map.containsKey(key))
+            misses++;
+        else {
+            hits++;
+            cleaner.notifyGet(key);
+        }
         V value = map.get(key);
-        LOG.debug("Element (" + key + ":" + value + ") was accessed in cache");
+        if (key!=null && value != null)
+            LOG.debug(String.format("Element (%s:%s) was accessed in cache", key.toString(), value.toString()));
         return value;
     }
 
@@ -110,15 +117,16 @@ public class SimpleCache<K,V> implements Cache<K,V>{
         cleaner.notifyRemove(key);
         V value = map.remove(key);
         size--;
-        LOG.debug("Element (" + key + ":" + value + ") was removed from cache");
+        if (key!=null && value != null)
+            LOG.debug(String.format("Element (%s:%s) was removed from cache", key.toString(), value.toString()));
     }
 
     /**
-     * Close cache, remove allocated resources.
+     * Clear cache
      */
     @Override
-    public void close() {
-        cleaner.notifyClose();
+    public void clear() {
+        cleaner.notifyClear();
         map.clear();
         size = 0;
         LOG.debug("Cache was closed");
@@ -164,8 +172,7 @@ public class SimpleCache<K,V> implements Cache<K,V>{
         Collection<K> victims = cleaner.nextVictims(count);
         LOG.debug("Elements " + victims + " will be killed");
         for (K key : victims) {
-            map.remove(key);
-            cleaner.notifyRemove(key);
+            remove(key);
         }
     }
 
@@ -207,7 +214,7 @@ public class SimpleCache<K,V> implements Cache<K,V>{
         cleaner.notifyPut(key);
         puts++;
         size++;
-        LOG.debug("Element (" + key + ":" + value + ") was inserted to cache");
+        LOG.debug(String.format("Element (%s:%s) was inserted to cache", key.toString(), value.toString()));
         return true;
     }
 

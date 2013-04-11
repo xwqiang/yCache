@@ -10,7 +10,6 @@ import java.util.*;
 public class RandomEviction<K> implements EvictionStrategy<K> {
 
     private List<K> keys;
-    private boolean closed = false;
 
     public RandomEviction(int cacheSize) {
         this.keys = new ArrayList<K>(cacheSize);
@@ -20,8 +19,7 @@ public class RandomEviction<K> implements EvictionStrategy<K> {
      * Called by cache to notify about closing.
      */
     @Override
-    public void notifyClose() {
-        closed = true;
+    public void notifyClear() {
         keys.clear();
     }
 
@@ -62,7 +60,7 @@ public class RandomEviction<K> implements EvictionStrategy<K> {
      */
     @Override
     public Collection nextVictims(int count) {
-        if (closed || count > keys.size()) throw new IllegalStateException(count+" elements can't be evicted");
+        if (count > keys.size()) throw new IllegalStateException(count+" elements can't be evicted");
         int m = count;
         Random rnd = new Random();
         // Floyd algorithm O(m)

@@ -25,7 +25,7 @@ public class LFUEviction<K> implements EvictionStrategy<K> {
      * Called by cache to notify about closing.
      */
     @Override
-    public void notifyClose() {
+    public void notifyClear() {
         lookup.clear();
     }
 
@@ -70,7 +70,8 @@ public class LFUEviction<K> implements EvictionStrategy<K> {
     public Collection<K> nextVictims(int count) {
         if (count > lookup.size()) throw new IllegalStateException(count+" elements can't be evicted");
         List<K> res = new ArrayList<K>(count);
-        Map.Entry<K,AtomicLong>[] entries = (Map.Entry<K,AtomicLong>[]) lookup.entrySet().toArray();
+        Map.Entry<K,AtomicLong>[] entries = new Map.Entry[0];
+        entries = lookup.entrySet().toArray(entries);
         Arrays.sort(entries, new Comparator<Map.Entry<K, AtomicLong>>() {
             @Override
             public int compare(Map.Entry<K, AtomicLong> o1, Map.Entry<K, AtomicLong> o2) {

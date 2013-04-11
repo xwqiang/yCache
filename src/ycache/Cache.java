@@ -33,9 +33,9 @@ public interface Cache<K, V> {
     void remove(K key);
 
     /**
-     * Close cache, remove allocated resources.
+     * Clear cache.
      */
-    void close();
+    void clear();
 
     /**
      * Get current count of cached elements.

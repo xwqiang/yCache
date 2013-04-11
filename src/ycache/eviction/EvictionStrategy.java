@@ -12,7 +12,7 @@ public interface EvictionStrategy<K> {
     /**
      * Called by cache to notify about closing.
      */
-    void notifyClose();
+    void notifyClear();
 
     /**
      * Called by cache to notify about new element.
